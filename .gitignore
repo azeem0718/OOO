@@ -1,0 +1,19 @@
+# Never commit broker credentials or live trading state
+**/creds*.py
+**/credentials*
+**/*secret*
+**/*password*
+.env
+.env.*
+broker_config.py
+live_v3/
+state_v3.json
+
+# Data + research artifacts (large, regenerable)
+fx/cache/
+xau/data/
+*.parquet
+
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
