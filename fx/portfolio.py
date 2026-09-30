@@ -46,10 +46,16 @@ def total_returns(prices: dict[str, pd.Series], rates: pd.DataFrame) -> pd.DataF
     return pd.DataFrame(out, index=sp.index)
 
 
-def cost_bp(pair: str, price_level: float) -> float:
-    """One-way cost in decimal, from the round-turn spread in pips."""
+def cost_bp(pair: str, price_level: float,
+            spread_pips: dict[str, float] | None = None) -> float:
+    """One-way cost in decimal, from the round-turn spread in pips.
+
+    spread_pips overrides the default table -- needed for EM crosses, where
+    retail spreads are far wider than the majors and vary by broker.
+    """
     spec = fx_spec(pair)
-    round_turn_pips = _FX_SPREAD_PIPS.get(pair, 1.5)
+    table = _FX_SPREAD_PIPS if spread_pips is None else {**_FX_SPREAD_PIPS, **spread_pips}
+    round_turn_pips = table.get(pair, 1.5)
     one_way_price = (round_turn_pips / 2.0) * spec.pip
     return one_way_price / price_level if price_level > 0 else 0.0
 
@@ -59,7 +65,8 @@ def simulate(weights: pd.DataFrame, rets: pd.DataFrame,
              target_vol: float | None = 0.10,
              vol_lookback: int = 60,
              max_leverage: float = 3.0,
-             charge_costs: bool = True) -> dict:
+             charge_costs: bool = True,
+             spread_pips: dict[str, float] | None = None) -> dict:
     """Run a weight schedule and return the resulting track record.
 
     target_vol scales the whole book to an annualised volatility estimated from
@@ -89,7 +96,7 @@ def simulate(weights: pd.DataFrame, rets: pd.DataFrame,
     if charge_costs:
         turn = (w_lag.diff().abs().fillna(0.0))
         cb = pd.DataFrame(
-            {c: [cost_bp(c, p) for p in
+            {c: [cost_bp(c, p, spread_pips) for p in
                  pd.Series(prices[c]).reindex(rets.index).ffill().bfill().to_numpy()]
              for c in common}, index=rets.index)
         cost = (turn * cb).sum(axis=1) * scale
