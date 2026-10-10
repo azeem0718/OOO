@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Employee Data{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Employee Data</h1>
+    <p>{{ "{:,}".format(total) }} records in the <code>employees</code> table (skills in <code>employee_skills</code>). This is the training data.</p>
+  </div>
+  <a class="btn ghost" href="{{ url_for('export_csv') }}">Export CSV</a>
+</div>
+
+<details class="card add-box">
+  <summary><h2 style="display:inline">+ Add employee record</h2> <span style="color:var(--muted);font-size:13px">&nbsp;new data improves the model after retraining</span></summary>
+  <form method="post" action="{{ url_for('add_employee') }}" style="margin-top:16px">
+    <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div class="field"><label for="full_name">Full name</label><input type="text" id="full_name" name="full_name" required></div>
+      <div class="field"><label for="salary">Actual annual salary (₹)</label><input type="number" id="salary" name="salary" min="50000" step="1000" required placeholder="e.g. 850000"></div>
+      <div class="field"><label for="exp">Experience (years)</label><input type="number" id="exp" name="experience_years" min="0" max="40" step="0.5" value="2" required></div>
+      <div class="field"><label for="role">Job role</label><select id="role" name="job_role">{% for o in cfg.JOB_ROLES %}<option>{{ o }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="edu">Education</label><select id="edu" name="education">{% for o in cfg.EDUCATION_LEVELS %}<option {{ 'selected' if o == "Bachelor's" }}>{{ o }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="loc">Location</label><select id="loc" name="location">{% for o in cfg.LOCATIONS %}<option>{{ o }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="co">Company type</label><select id="co" name="company_size">{% for o in cfg.COMPANY_SIZES %}<option {{ 'selected' if o == 'Mid-size' }}>{{ o }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="cert">Certifications</label><input type="number" id="cert" name="certifications" min="0" max="20" value="0"></div>
+      <div class="field"><label for="rate">Performance rating (1-5)</label><input type="number" id="rate" name="performance_rating" min="1" max="5" value="3"></div>
+      <div class="field full"><span class="label-txt">Skills</span>
+        <div class="chips">{% for s in cfg.SKILLS %}<label class="chip"><input type="checkbox" name="skills" value="{{ s }}"><span>{{ s }}</span></label>{% endfor %}</div></div>
+      <div class="field"><button class="btn" type="submit">Save to database</button></div>
+    </div>
+  </form>
+</details>
+
+<div class="card mt">
+  <form class="toolbar" method="get">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search by name…" aria-label="Search by name">
+    <select name="role" aria-label="Filter by role"><option value="">All roles</option>{% for r in cfg.JOB_ROLES %}<option {{ 'selected' if r == role }}>{{ r }}</option>{% endfor %}</select>
+    <button class="btn sm" type="submit">Filter</button>
+    {% if q or role %}<a class="btn ghost sm" href="{{ url_for('employees') }}">Clear</a>{% endif %}
+  </form>
+  <div class="table-wrap mt">
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Role</th><th class="r">Exp</th><th>Education</th><th>Location</th><th>Company</th><th class="r">Certs</th><th class="r">Rating</th><th>Skills</th><th class="r">Salary</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td style="color:var(--muted)">#{{ r.employee_id }}</td>
+          <td style="white-space:nowrap"><b>{{ r.full_name }}</b></td>
+          <td>{{ r.job_role }}</td>
+          <td class="r">{{ "%.1f"|format(r.experience_years) }}</td>
+          <td>{{ r.education }}</td>
+          <td style="white-space:nowrap">{{ r.location }}</td>
+          <td>{{ r.company_size }}</td>
+          <td class="r">{{ r.certifications }}</td>
+          <td class="r">{{ r.performance_rating }}</td>
+          <td>{% for s in (r.skills or '').split(',') if s %}<span class="tag">{{ s }}</span>{% endfor %}</td>
+          <td class="r" style="white-space:nowrap"><b>{{ r.salary|lpa }}</b></td>
+          <td><form method="post" action="{{ url_for('delete_employee', emp_id=r.employee_id) }}" onsubmit="return confirm('Delete {{ r.full_name }}?')"><button class="btn danger" type="submit">Delete</button></form></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="12" style="text-align:center;color:var(--muted);padding:30px">No employees match.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="pager">
+    Page {{ page }} of {{ pages }}
+    {% if page > 1 %}<a class="btn ghost sm" href="{{ url_for('employees', q=q, role=role, page=page-1) }}">← Prev</a>{% endif %}
+    {% if page < pages %}<a class="btn ghost sm" href="{{ url_for('employees', q=q, role=role, page=page+1) }}">Next →</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Predict Salary{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Predict Employee Salary</h1>
+    <p>Enter the employee's details. The {{ model.name }} model (R² {{ "%.3f"|format(model.metrics.r2) }}) estimates their annual CTC.</p>
+  </div>
+</div>
+
+<div class="predict-layout">
+  <!-- ======================= INPUT FORM ======================= -->
+  <form class="card predict-form" method="post" action="{{ url_for('predict') }}">
+    <div class="card-head"><h2>Employee details</h2></div>
+    <div class="form-grid">
+      <div class="field full">
+        <label for="employee_name">Employee name <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <input type="text" id="employee_name" name="employee_name" value="{{ form.employee_name }}" placeholder="e.g. Priya Sharma">
+      </div>
+      <div class="field full">
+        <label for="experience_years">Years of experience</label>
+        <div class="range-row">
+          <input type="range" id="experience_years" name="experience_years" min="0" max="30" step="0.5" value="{{ form.experience_years }}"
+                 oninput="document.getElementById('expOut').value = this.value + ' yrs'">
+          <output id="expOut">{{ form.experience_years }} yrs</output>
+        </div>
+      </div>
+      <div class="field full">
+        <label for="job_role">Job role</label>
+        <select id="job_role" name="job_role">{% for o in cfg.JOB_ROLES %}<option {{ 'selected' if o == form.job_role }}>{{ o }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
+        <label for="education">Education</label>
+        <select id="education" name="education">{% for o in cfg.EDUCATION_LEVELS %}<option {{ 'selected' if o == form.education }}>{{ o }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
+        <label for="location">Location</label>
+        <select id="location" name="location">{% for o in cfg.LOCATIONS %}<option {{ 'selected' if o == form.location }}>{{ o }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
+        <label for="company_size">Company type</label>
+        <select id="company_size" name="company_size">{% for o in cfg.COMPANY_SIZES %}<option {{ 'selected' if o == form.company_size }}>{{ o }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
+        <label for="certifications">Certifications</label>
+        <input type="number" id="certifications" name="certifications" min="0" max="20" value="{{ form.certifications }}">
+      </div>
+      <div class="field full">
+        <span class="label-txt">Performance rating</span>
+        <div class="stars" id="stars">
+          {% for r in range(1, 6) %}
+          <label class="{{ 'on' if r <= form.performance_rating|int }}" title="{{ r }} / 5">
+            <input type="radio" name="performance_rating" value="{{ r }}" {{ 'checked' if r == form.performance_rating|int }}>★</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="field full">
+        <span class="label-txt">Skills</span>
+        <div class="chips">
+          {% for s in cfg.SKILLS %}
+          <label class="chip"><input type="checkbox" name="skills" value="{{ s }}" {{ 'checked' if s in form.skills }}><span>{{ s }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="field full"><button class="btn block" type="submit">Predict salary</button></div>
+    </div>
+  </form>
+
+  <!-- ======================= RESULT ======================= -->
+  <div>
+  {% if not result %}
+    <div class="card empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+      <h2>Your prediction will appear here</h2>
+      <p>Fill in the form and press <b>Predict salary</b> for the predicted CTC, a likely range,<br>
+      a peer comparison, a growth projection and skill-by-skill what-if analysis.</p>
+    </div>
+  {% else %}
+    {% set r = result %}
+    <div class="card">
+      <div class="hero">
+        <div>
+          <div class="eyebrow">Predicted annual CTC{% if form.employee_name %} · {{ form.employee_name }}{% endif %}</div>
+          <div class="big num">{{ r.predicted|inr }}</div>
+          <div class="lpa">{{ r.predicted|lpa }} · {{ r.monthly|inr }} per month (gross)</div>
+          <div class="range-viz">
+            {% set span = (r.peer_max - r.peer_min) or 1 %}
+            <div class="range-track" title="Track = salary span of {{ r.inp.job_role }}s in the database">
+              <div class="range-band" style="left: {{ (r.lower - r.peer_min) / span * 100 }}%; width: {{ (r.upper - r.lower) / span * 100 }}%"></div>
+              <div class="range-dot" style="left: {{ (r.predicted - r.peer_min) / span * 100 }}%"></div>
+            </div>
+            <div class="range-labels"><span>{{ r.peer_min|lpa }}</span><span>80% likely range: <b>{{ r.lower|lpa }} – {{ r.upper|lpa }}</b></span><span>{{ r.peer_max|lpa }}</span></div>
+          </div>
+        </div>
+        <div class="facts">
+          <div class="fact"><div class="k">Percentile in role</div><div class="v">{% if r.percentile is not none %}{{ "%.0f"|format(r.percentile) }}<sup>th</sup>{% else %}—{% endif %}</div></div>
+          <div class="fact"><div class="k">{{ r.inp.job_role }} average</div><div class="v">{{ r.role_avg|lpa if r.role_avg else '—' }}</div></div>
+          <div class="fact"><div class="k">Similar experience (±2 yrs)</div><div class="v">{{ r.similar_avg|lpa if r.similar_avg else '—' }}</div><div class="k">{{ r.similar_count }} employees</div></div>
+          <div class="fact"><div class="k">Model</div><div class="v">{{ r.model_name }}</div><div class="k">R² {{ "%.3f"|format(model.metrics.r2) }} · ±{{ "%.1f"|format(model.metrics.mape) }}% avg error</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid g-2 mt">
+      <div class="card span-2">
+        <div class="card-head"><div><h2>Salary growth projection</h2><p>Same profile, more years of experience. The dot is this employee today. Flat steps come from the tree-based model, and there are fewer very senior employees to learn from.</p></div></div>
+        <div class="chart-box"><canvas id="curve"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><h2>Where this salary sits among {{ r.peer_count }} {{ r.inp.job_role }}s</h2><p>Salary distribution of the role (LPA). Highlighted band = this prediction.</p></div></div>
+        <div class="chart-box"><canvas id="peerHist"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><h2>Against every {{ r.inp.job_role }}</h2><p>Grey dots are existing employees; the large dot is this prediction.</p></div></div>
+        <div class="chart-box"><canvas id="peerScatter"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><h2>Skill impact</h2><p>What each skill is worth for this exact profile</p></div>
+          <div class="legend"><span><i style="background:var(--series-1)"></i>Has it: current value</span><span><i style="background:var(--series-3)"></i>Could learn: gain</span></div></div>
+        <div class="chart-box tall"><canvas id="skillImpact"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><h2>How to earn more</h2><p>Best skills to add next, with the predicted raise</p></div></div>
+        {% if r.tips %}
+        <ul class="tips">
+          {% for t in r.tips %}
+          <li><span>Learn <b>{{ t.skill }}</b></span><span class="gain">+{{ t.delta|inr }} <span style="font-weight:500">(+{{ "%.1f"|format(t.pct) }}%)</span></span></li>
+          {% endfor %}
+        </ul>
+        {% else %}<p style="color:var(--text-2)">This profile already has every skill that adds value.</p>{% endif %}
+        <h3 style="margin:18px 0 8px">Current skills</h3>
+        <div>{% for s in r.inp.skills %}<span class="tag">{{ s }}</span>{% else %}<span style="color:var(--muted)">none selected</span>{% endfor %}</div>
+        <h3 style="margin:18px 0 8px">Profile</h3>
+        <div style="color:var(--text-2);font-size:14px">{{ r.inp.job_role }} · {{ r.inp.experience_years }} yrs · {{ r.inp.education }} · {{ r.inp.location }} · {{ r.inp.company_size }} · {{ r.inp.certifications }} certifications · rating {{ r.inp.performance_rating }}/5</div>
+      </div>
+    </div>
+
+    <div class="card mt">
+      <div class="card-head"><div><h2>What-if analysis</h2><p>Change one factor at a time and keep everything else the same. Blue = current choice.</p></div></div>
+      <div class="grid g-2" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+        <div><h3>Education</h3><div class="chart-box short"><canvas id="wiEdu"></canvas></div></div>
+        <div><h3>Location</h3><div class="chart-box short"><canvas id="wiLoc"></canvas></div></div>
+        <div><h3>Company type</h3><div class="chart-box short"><canvas id="wiCo"></canvas></div></div>
+        <div><h3>Performance rating</h3><div class="chart-box short"><canvas id="wiRating"></canvas></div></div>
+      </div>
+    </div>
+  {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // star rating widget
+  document.querySelectorAll("#stars input").forEach((inp) => inp.addEventListener("change", () => {
+    const v = +inp.value;
+    document.querySelectorAll("#stars label").forEach((l, i) => l.classList.toggle("on", i < v));
+  }));
+</script>
+{% if viz %}
+<script>
+const V = {{ viz|tojson }};
+
+// growth projection
+registerChart((t) => new Chart(document.getElementById("curve"), {
+  type: "line",
+  data: { datasets: [
+    { label: "Projected salary", data: V.curve.map(p => ({ x: p.years, y: p.salary })), borderColor: t.s1, backgroundColor: alpha(t.s1, .08), fill: true, tension: .25 },
+    { label: "Today", data: [{ x: V.current_exp, y: V.current_salary }], type: "scatter", pointRadius: 8, pointHoverRadius: 10, backgroundColor: t.s1, borderColor: t.surface, borderWidth: 3 },
+  ]},
+  options: {
+    interaction: { mode: "nearest", axis: "x", intersect: false },
+    scales: { x: { type: "linear", min: 0, max: 25, title: { display: true, text: "Years of experience" } }, y: lpaAxis() },
+    plugins: { tooltip: { callbacks: { title: (i) => i[0].raw.x + " years", label: (i) => `${i.dataset.label}: ${inr(i.raw.y)} (${lpa(i.raw.y)})` } } },
+  },
+}));
+
+// peer histogram
+registerChart((t) => new Chart(document.getElementById("peerHist"), {
+  type: "bar",
+  data: { labels: V.peer_hist.labels, datasets: [{ data: V.peer_hist.counts,
+    backgroundColor: V.peer_hist.counts.map((_, i) => i === V.peer_hist.you ? t.s1 : t.neutral),
+    borderColor: t.surface, borderWidth: { left: 1, right: 1 }, categoryPercentage: 1, barPercentage: 1 }] },
+  options: {
+    scales: { x: noGridAxis({ title: { display: true, text: "Salary (LPA)" }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } }), y: { title: { display: true, text: "Employees" } } },
+    plugins: { tooltip: { callbacks: { title: (i) => i[0].label + " LPA", label: (i) => i.raw + " employees" + (i.dataIndex === V.peer_hist.you ? " · this prediction" : "") } } },
+  },
+}));
+
+// peer scatter
+registerChart((t) => new Chart(document.getElementById("peerScatter"), {
+  type: "scatter",
+  data: { datasets: [
+    { label: "Employees", data: V.similar, backgroundColor: alpha(t.neutral, .7), pointRadius: 3.5, pointHoverRadius: 6 },
+    { label: "This prediction", data: [{ x: V.current_exp, y: V.current_salary }], backgroundColor: t.s1, borderColor: t.surface, borderWidth: 3, pointRadius: 10, pointHoverRadius: 12, order: -1 },
+  ]},
+  options: {
+    scales: { x: { min: 0, title: { display: true, text: "Years of experience" } }, y: lpaAxis() },
+    plugins: { tooltip: { callbacks: { label: (i) => `${i.dataset.label}: ${i.raw.x} yrs · ${lpa(i.raw.y)}` } } },
+  },
+}));
+
+// skill impact
+registerChart((t) => new Chart(document.getElementById("skillImpact"), {
+  type: "bar",
+  data: { labels: V.skills.map(s => s.skill), datasets: [{ data: V.skills.map(s => s.delta),
+    backgroundColor: V.skills.map(s => s.has ? t.s1 : t.s3), barPercentage: .7 }] },
+  options: {
+    indexAxis: "y",
+    scales: { x: { ticks: { callback: (v) => (v >= 0 ? "+" : "") + (v / 1e5).toFixed(1) + "L" } }, y: noGridAxis({ ticks: { autoSkip: false } }) },
+    plugins: { tooltip: { callbacks: { label: (i) => {
+      const s = V.skills[i.dataIndex];
+      return [s.has ? "You have this skill. It adds:" : "If you learn it:", `${s.delta >= 0 ? "+" : ""}${inr(s.delta)} (${s.pct >= 0 ? "+" : ""}${s.pct.toFixed(1)}%)`];
+    } } } },
+  },
+}));
+
+// what-if mini charts
+function whatIf(id, rows) {
+  registerChart((t) => new Chart(document.getElementById(id), {
+    type: "bar",
+    data: { labels: rows.map(r => r.option), datasets: [{ data: rows.map(r => r.salary),
+      backgroundColor: rows.map(r => r.current ? t.s1 : t.neutral), barPercentage: .7 }] },
+    options: {
+      scales: { x: noGridAxis({ ticks: { maxRotation: 0 } }), y: lpaAxis() },
+      plugins: { tooltip: { callbacks: { label: (i) => {
+        const d = i.raw - V.current_salary;
+        return [lpa(i.raw), rows[i.dataIndex].current ? "current choice" : `${d >= 0 ? "+" : ""}${inr(d)} vs now`];
+      } } } },
+    },
+  }));
+}
+whatIf("wiEdu", V.education);
+whatIf("wiLoc", V.location);
+whatIf("wiCo", V.company);
+whatIf("wiRating", V.rating);
+</script>
+{% endif %}
+{% endblock %}

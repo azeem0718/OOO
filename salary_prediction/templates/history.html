@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Prediction History</h1>
+    <p>Every prediction from the CLI and the web UI, stored in the <code>predictions</code> table.</p>
+  </div>
+  {% if rows %}
+  <form method="post" action="{{ url_for('clear_history') }}" onsubmit="return confirm('Delete all prediction history?')">
+    <button class="btn ghost" type="submit">Clear history</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if rows %}
+<div class="card">
+  <div class="card-head"><div><h2>Predicted salary vs experience</h2><p>All saved predictions</p></div></div>
+  <div class="chart-box short"><canvas id="histChart"></canvas></div>
+</div>
+
+<div class="card mt">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>When</th><th>Name</th><th>Role</th><th class="r">Exp</th><th>Education</th><th>Location</th><th>Company</th><th>Skills</th><th class="r">Predicted</th><th class="r">Range</th><th>Via</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td style="color:var(--muted)">{{ r.prediction_id }}</td>
+          <td style="white-space:nowrap">{{ r.created_at|string|truncate(16, True, '') }}</td>
+          <td>{{ r.employee_name or '—' }}</td>
+          <td>{{ r.job_role }}</td>
+          <td class="r">{{ "%.1f"|format(r.experience_years) }}</td>
+          <td>{{ r.education }}</td>
+          <td>{{ r.location }}</td>
+          <td>{{ r.company_size }}</td>
+          <td>{% for s in (r.skills or '').split(',') if s %}<span class="tag">{{ s }}</span>{% endfor %}</td>
+          <td class="r"><b>{{ r.predicted_salary|lpa }}</b></td>
+          <td class="r" style="color:var(--text-2);white-space:nowrap">{{ r.lower_bound|lpa }} – {{ r.upper_bound|lpa }}</td>
+          <td><span class="tag">{{ r.source }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card empty-state">
+  <h2>No predictions yet</h2>
+  <p><a href="{{ url_for('predict') }}">Make your first prediction →</a></p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if rows %}
+<script>
+const H = {{ rows|tojson }};
+registerChart((t) => new Chart(document.getElementById("histChart"), {
+  type: "scatter",
+  data: { datasets: [{ data: H.map(r => ({ x: +r.experience_years, y: +r.predicted_salary, r })), backgroundColor: alpha(t.s1, .75), borderColor: t.surface, borderWidth: 1.5, pointRadius: 6, pointHoverRadius: 8 }] },
+  options: {
+    scales: { x: { min: 0, title: { display: true, text: "Years of experience" } }, y: lpaAxis() },
+    plugins: { tooltip: { callbacks: { title: (i) => i[0].raw.r.employee_name || i[0].raw.r.job_role, label: (i) => [`${i.raw.r.job_role} · ${i.raw.x} yrs`, `Predicted ${lpa(i.raw.y)}`] } } },
+  },
+}));
+</script>
+{% endif %}
+{% endblock %}
