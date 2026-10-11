@@ -16,6 +16,35 @@ The project comes in **two versions** that share the same database and ML core:
 
 ---
 
+## ⚡ Windows: one-step install
+
+1. Download the project (green **Code → Download ZIP** on GitHub) and extract it.
+2. *(Optional)* Start MySQL (MySQL Server, or click **Start** next to MySQL in XAMPP).
+3. Open the `salary_prediction` folder and **double-click `START_HERE.bat`**.
+
+That's it. On the first run it automatically:
+* installs Python 3.12 if you don't have it (through `winget`)
+* creates a private environment (`.venv`) and installs all packages
+* asks for your MySQL username and password once, tests them and saves them to `db_settings.ini`
+  (answer **N** if you don't have MySQL and it will use SQLite instead)
+* creates the tables, loads 1,200 employee records and trains the model
+
+After that it shows a menu (later runs go straight to it):
+```
+  1. Web version           (opens in your browser)
+  2. Command-line version
+  3. Change MySQL settings
+  4. Reset database and retrain model
+  5. Reinstall packages
+  0. Exit
+```
+> If Windows SmartScreen warns about the file, click **More info → Run anyway**.
+> To stop the web version, press **Ctrl+C** in the black window, then answer **N** to return to the menu.
+
+The manual steps below are only needed on Linux/macOS or if you prefer the command line.
+
+---
+
 ## 1. Project structure
 
 ```
@@ -26,6 +55,8 @@ salary_prediction/
 ├── data_generator.py    # Generates a realistic sample dataset (1,200 employees)
 ├── ml_model.py          # Training, model comparison, prediction, what-if analysis
 ├── setup_db.py          # One-time setup: create tables → seed data → train
+├── configure_db.py      # Asks for MySQL login, tests it, saves db_settings.ini
+├── START_HERE.bat       # Windows one-click installer + launcher
 ├── cli_app.py           # VERSION 1: command-line app
 ├── web_app.py           # VERSION 2: Flask web app
 ├── templates/           # HTML pages (dashboard, predict, model, employees, history)
@@ -42,8 +73,10 @@ pip install -r requirements.txt
 ```
 
 ### Step 2: Configure MySQL
-Install MySQL Server (or XAMPP/MariaDB) and make sure it is running. Then set your credentials
-(they default to `root` with an empty password on `localhost:3306`):
+Install MySQL Server (or XAMPP/MariaDB) and make sure it is running. Then run
+`python configure_db.py`, which asks for your login, tests it and saves it to `db_settings.ini`.
+Or set environment variables instead (they override the file; defaults are `root` with an empty
+password on `localhost:3306`):
 
 **Windows (cmd)**
 ```cmd

@@ -284,7 +284,16 @@ def clear_history():
 
 
 if __name__ == "__main__":
+    import os
+    import threading
+    import webbrowser
+
+    config.fix_console()
     ensure_data()
     get_model()
+    url = "http://127.0.0.1:5000"
     print(f" * Database: {get_db().description}")
+    print(f" * Open {url} in your browser  (press Ctrl+C to stop)")
+    if os.getenv("OPEN_BROWSER") == "1":
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     app.run(debug=False, host="127.0.0.1", port=5000)

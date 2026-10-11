@@ -25,6 +25,7 @@ from db import get_db
 from ml_model import SalaryModel, train_and_save, validate_input
 
 # ------------------------------------------------------------- terminal UI ---
+config.fix_console()
 USE_COLOR = sys.stdout.isatty() and os.getenv("NO_COLOR") is None
 
 
@@ -444,4 +445,5 @@ def main():
 
 
 if __name__ == "__main__":
+    config.fix_console()
     main()

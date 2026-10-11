@@ -42,4 +42,5 @@ def main():
 
 
 if __name__ == "__main__":
+    config.fix_console()
     main()

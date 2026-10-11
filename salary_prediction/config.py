@@ -1,9 +1,10 @@
 """
 Central configuration for the Employee Salary Prediction System.
 
-Database settings are read from environment variables so the same code runs on
-any machine. By default the app tries MySQL first; if MySQL is not reachable it
-falls back to a local SQLite file so the project can still be demonstrated.
+Database settings come from db_settings.ini (written by configure_db.py /
+START_HERE.bat) and can be overridden with environment variables. By default the
+app tries MySQL first; if MySQL is not reachable it falls back to a local SQLite
+file so the project can still be demonstrated.
 
     DB_BACKEND   = mysql | sqlite        (default: mysql)
     MYSQL_HOST   = localhost
@@ -12,18 +13,30 @@ falls back to a local SQLite file so the project can still be demonstrated.
     MYSQL_PASSWORD = (empty)
     MYSQL_DATABASE = salary_prediction_db
 """
+import configparser
 import os
+import sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SETTINGS_PATH = os.path.join(BASE_DIR, "db_settings.ini")
 
 # ---------------------------------------------------------------- database ---
-DB_BACKEND = os.getenv("DB_BACKEND", "mysql").lower()
+_ini = configparser.ConfigParser(interpolation=None)
+_ini.read(SETTINGS_PATH, encoding="utf-8")
+
+
+def _setting(env, key, default):
+    """Environment variable > db_settings.ini > default."""
+    return os.getenv(env) or _ini.get("database", key, fallback=default)
+
+
+DB_BACKEND = _setting("DB_BACKEND", "backend", "mysql").lower()
 MYSQL_CONFIG = {
-    "host": os.getenv("MYSQL_HOST", "localhost"),
-    "port": int(os.getenv("MYSQL_PORT", "3306")),
-    "user": os.getenv("MYSQL_USER", "root"),
-    "password": os.getenv("MYSQL_PASSWORD", ""),
-    "database": os.getenv("MYSQL_DATABASE", "salary_prediction_db"),
+    "host": _setting("MYSQL_HOST", "host", "localhost"),
+    "port": int(_setting("MYSQL_PORT", "port", "3306")),
+    "user": _setting("MYSQL_USER", "user", "root"),
+    "password": os.getenv("MYSQL_PASSWORD", _ini.get("database", "password", fallback="")),
+    "database": _setting("MYSQL_DATABASE", "database", "salary_prediction_db"),
 }
 SQLITE_PATH = os.path.join(BASE_DIR, "salary_prediction.sqlite3")
 
@@ -96,3 +109,14 @@ def fmt_inr(amount: float) -> str:
 def fmt_lpa(amount: float) -> str:
     """Rupees per annum -> 'x.xx LPA' (lakhs per annum)."""
     return f"{amount / 100000:.2f} LPA"
+
+
+def fix_console():
+    """Make ₹, ★ and box-drawing characters and colours work in the Windows console."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+    if os.name == "nt":
+        os.system("")  # enables ANSI colour codes in cmd.exe / PowerShell
