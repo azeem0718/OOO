@@ -14,6 +14,8 @@ The project comes in **two versions** that share the same database and ML core:
 | Command line | `cli_app.py` | Menu-driven terminal app with ASCII bar charts and histograms |
 | Web UI | `web_app.py` | Flask website with a dashboard, prediction page, model insights, data management and 20+ interactive charts |
 
+📄 **Project report & viva guide (PDF):** [`docs/Salary_Prediction_Report_and_Viva_Guide.pdf`](docs/Salary_Prediction_Report_and_Viva_Guide.pdf) covers the full explanation, diagrams and screenshots, plus 114 viva questions with answers.
+
 ---
 
 ## ⚡ Windows: one-step install
