@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Salary Insights Dashboard</h1>
+    <p>What drives employee pay, based on {{ kpi.employees }} employee records stored in {{ db_backend }}.</p>
+  </div>
+  <a class="btn" href="{{ url_for('predict') }}">Predict a salary →</a>
+</div>
+
+<div class="grid g-kpi">
+  <div class="card kpi"><div class="label">Employees in DB</div><div class="value num">{{ "{:,}".format(kpi.employees) }}</div><div class="sub">avg {{ "%.1f"|format(kpi.avg_exp) }} yrs experience</div></div>
+  <div class="card kpi"><div class="label">Average salary</div><div class="value num">{{ kpi.avg|lpa }}</div><div class="sub">{{ kpi.avg|inr }} / year</div></div>
+  <div class="card kpi"><div class="label">Median salary</div><div class="value num">{{ kpi.median|lpa }}</div><div class="sub">half earn less than this</div></div>
+  <div class="card kpi"><div class="label">Model accuracy (R²)</div><div class="value num">{{ "%.3f"|format(kpi.r2) }}</div><div class="sub">{{ model.name }} · avg error {{ "%.1f"|format(kpi.mape) }}%</div></div>
+  <div class="card kpi"><div class="label">Predictions made</div><div class="value num">{{ kpi.predictions }}</div><div class="sub">highest-paid role: {{ kpi.top_role }}</div></div>
+</div>
+
+<div class="grid g-2 mt">
+  <div class="card span-2">
+    <div class="card-head">
+      <div><h2>Salary vs experience</h2><p>Each dot is one employee. Pick a role to highlight it.</p></div>
+      <select id="roleFilter" style="width:auto">
+        <option value="">All roles</option>
+        {% for r in data.roles %}<option>{{ r }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="chart-box tall"><canvas id="scatter"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Salary distribution</h2><p>Number of employees per salary band (LPA)</p></div></div>
+    <div class="chart-box"><canvas id="hist"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Pay grows with experience</h2><p>Average and median salary by years of experience</p></div>
+      <div class="legend"><span><i style="background:var(--series-1)"></i>Average</span><span><i style="background:var(--series-2)"></i>Median</span></div></div>
+    <div class="chart-box"><canvas id="band"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Average salary by job role</h2><p>Annual CTC, highest first</p></div></div>
+    <div class="chart-box"><canvas id="role"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Average salary by education</h2><p>Higher qualification → higher pay</p></div></div>
+    <div class="chart-box"><canvas id="edu"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Skill premium</h2><p>How much more employees with each skill earn on average</p></div></div>
+    <div class="chart-box"><canvas id="skills"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Location × company type</h2><p>Average salary (LPA)</p></div>
+      <div class="legend">{% for s in data.loc_size.series %}<span><i style="background:var(--series-{{ loop.index }})"></i>{{ s.name }}</span>{% endfor %}</div></div>
+    <div class="chart-box"><canvas id="locsize"></canvas></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const D = {{ data|tojson }};
+
+// --- scatter: salary vs experience, role highlight
+let scatterChart = null;
+registerChart((t) => {
+  const role = document.getElementById("roleFilter").value;
+  const on = D.scatter.filter(p => !role || p.role === role);
+  const off = role ? D.scatter.filter(p => p.role !== role) : [];
+  scatterChart = new Chart(document.getElementById("scatter"), {
+    type: "scatter",
+    data: { datasets: [
+      { label: "Other roles", data: off, backgroundColor: alpha(t.neutral, .45), pointRadius: 3, pointHoverRadius: 5 },
+      { label: role || "All roles", data: on, backgroundColor: alpha(t.s1, role ? .85 : .5),
+        borderColor: t.surface, borderWidth: role ? 1 : 0, pointRadius: role ? 4.5 : 3.5, pointHoverRadius: 7 },
+    ]},
+    options: {
+      scales: {
+        x: { title: { display: true, text: "Years of experience" }, min: 0 },
+        y: lpaAxis({ title: { display: true, text: "Annual salary" } }),
+      },
+      plugins: { tooltip: { callbacks: {
+        title: (it) => it[0].raw.name,
+        label: (it) => [`${it.raw.role}`, `${it.raw.x} yrs · ${inr(it.raw.y)} (${lpa(it.raw.y)})`],
+      } } },
+    },
+  });
+  return scatterChart;
+});
+document.getElementById("roleFilter").addEventListener("change", () => renderCharts());
+
+// --- histogram
+registerChart((t) => new Chart(document.getElementById("hist"), {
+  type: "bar",
+  data: { labels: D.hist.labels, datasets: [{ data: D.hist.counts, backgroundColor: t.s1, borderColor: t.surface, borderWidth: { left: 1, right: 1 }, categoryPercentage: 1, barPercentage: 1 }] },
+  options: {
+    scales: { x: noGridAxis({ title: { display: true, text: "Salary band (LPA)" } }), y: { title: { display: true, text: "Employees" } } },
+    plugins: { tooltip: { callbacks: { title: (i) => i[0].label + " LPA", label: (i) => i.raw + " employees" } } },
+  },
+}));
+
+// --- experience band lines
+registerChart((t) => new Chart(document.getElementById("band"), {
+  type: "line",
+  data: { labels: D.band.labels, datasets: [
+    { label: "Average", data: D.band.mean, borderColor: t.s1, backgroundColor: alpha(t.s1, .08), fill: true, tension: .3, pointRadius: 4, pointBackgroundColor: t.s1, pointBorderColor: t.surface, pointBorderWidth: 2 },
+    { label: "Median", data: D.band.median, borderColor: t.s2, tension: .3, pointRadius: 4, pointBackgroundColor: t.s2, pointBorderColor: t.surface, pointBorderWidth: 2, borderDash: [5, 4] },
+  ]},
+  options: {
+    interaction: { mode: "index", intersect: false },
+    scales: { x: noGridAxis({ title: { display: true, text: "Experience (years)" } }), y: lpaAxis() },
+    plugins: { tooltip: { displayColors: true, callbacks: { title: (i) => i[0].label + " years", label: (i) => ` ${i.dataset.label}: ${lpa(i.raw)}` } } },
+  },
+}));
+
+// --- role
+registerChart((t) => new Chart(document.getElementById("role"), {
+  type: "bar",
+  data: { labels: D.role.labels, datasets: [{ data: D.role.mean, backgroundColor: t.s1, barPercentage: .7 }] },
+  options: {
+    indexAxis: "y",
+    scales: { x: lpaAxis(), y: noGridAxis() },
+    plugins: { tooltip: { callbacks: { label: (i) => [`Average ${lpa(i.raw)}`, `Median ${lpa(D.role.median[i.dataIndex])}`, `${D.role.count[i.dataIndex]} employees`] } } },
+  },
+}));
+
+// --- education
+registerChart((t) => new Chart(document.getElementById("edu"), {
+  type: "bar",
+  data: { labels: D.edu.labels, datasets: [{ data: D.edu.mean, backgroundColor: t.s1, barPercentage: .55 }] },
+  options: {
+    scales: { x: noGridAxis(), y: lpaAxis() },
+    plugins: { tooltip: { callbacks: { label: (i) => [`Average ${lpa(i.raw)}`, `${D.edu.count[i.dataIndex]} employees`] } } },
+  },
+}));
+
+// --- skill premium
+registerChart((t) => new Chart(document.getElementById("skills"), {
+  type: "bar",
+  data: { labels: D.skills.map(s => s.skill), datasets: [{ data: D.skills.map(s => s.premium),
+    backgroundColor: D.skills.map(s => s.premium >= 0 ? t.s1 : t.s2), barPercentage: .7 }] },
+  options: {
+    indexAxis: "y",
+    scales: { x: { ticks: { callback: (v) => (v > 0 ? "+" : "") + v + "%" } }, y: noGridAxis({ ticks: { autoSkip: false } }) },
+    plugins: { tooltip: { callbacks: { label: (i) => {
+      const s = D.skills[i.dataIndex];
+      return [`${s.premium >= 0 ? "+" : ""}${s.premium.toFixed(1)}% premium`, `With: ${lpa(s.with)} (${s.count} people)`, `Without: ${lpa(s.without)}`];
+    } } } },
+  },
+}));
+
+// --- location x company size
+registerChart((t) => new Chart(document.getElementById("locsize"), {
+  type: "bar",
+  data: { labels: D.loc_size.labels, datasets: D.loc_size.series.map((s, k) => ({
+    label: s.name, data: s.values, backgroundColor: [t.s1, t.s2, t.s3][k], borderColor: t.surface, borderWidth: { left: 2, right: 2 }, barPercentage: .85, categoryPercentage: .7,
+  })) },
+  options: {
+    interaction: { mode: "index", intersect: false },
+    scales: { x: noGridAxis(), y: lpaAxis() },
+    plugins: { tooltip: { displayColors: true, callbacks: { label: (i) => ` ${i.dataset.label}: ${lpa(i.raw)}` } } },
+  },
+}));
+</script>
+{% endblock %}

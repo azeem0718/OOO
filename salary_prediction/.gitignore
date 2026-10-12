@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.sqlite3
+models/
+db_settings.ini
+.venv/

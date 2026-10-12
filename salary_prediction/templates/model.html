@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Model Insights{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Model Insights</h1>
+    <p>Five regression models compared on {{ b.test_rows }} unseen employees (80/20 split + 5-fold cross-validation). Trained {{ b.trained_at }}.</p>
+  </div>
+  <form method="post" action="{{ url_for('train') }}" onsubmit="this.querySelector('button').textContent='Training…'">
+    <button class="btn" type="submit">Retrain from {{ db_backend }} data</button>
+  </form>
+</div>
+
+<div class="grid g-kpi">
+  <div class="card kpi"><div class="label">Selected model</div><div class="value" style="font-size:20px">{{ model.name }}</div><div class="sub">highest cross-validated R²</div></div>
+  <div class="card kpi"><div class="label">R² score (test)</div><div class="value num">{{ "%.4f"|format(model.metrics.r2) }}</div><div class="sub">explains {{ "%.1f"|format(model.metrics.r2 * 100) }}% of salary variation</div></div>
+  <div class="card kpi"><div class="label">Mean absolute error</div><div class="value num">{{ model.metrics.mae|lpa }}</div><div class="sub">{{ model.metrics.mae|inr }} average miss</div></div>
+  <div class="card kpi"><div class="label">Mean % error (MAPE)</div><div class="value num">{{ "%.2f"|format(model.metrics.mape) }}%</div><div class="sub">{{ "%.0f"|format(within10) }}% of predictions within ±10%</div></div>
+</div>
+
+<div class="card mt">
+  <div class="card-head"><div><h2>Model comparison</h2><p>Every model learns log(salary) from the same features. ★ = selected</p></div></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Model</th><th class="r">R² (test)</th><th class="r">CV R² (5-fold)</th><th class="r">MAE</th><th class="r">RMSE</th><th class="r">MAPE</th></tr></thead>
+      <tbody>
+      {% for r in b.all_results %}
+        <tr class="{{ 'selected' if r.model_name == model.name }}">
+          <td><b>{{ r.model_name }}</b>{% if r.model_name == model.name %}<span class="badge">★ selected</span>{% endif %}</td>
+          <td class="r">{{ "%.4f"|format(r.r2) }}</td>
+          <td class="r">{{ "%.4f"|format(r.cv_r2) }} <span style="color:var(--muted)">± {{ "%.3f"|format(r.cv_std) }}</span></td>
+          <td class="r">{{ r.mae|inr }}</td>
+          <td class="r">{{ r.rmse|inr }}</td>
+          <td class="r">{{ "%.2f"|format(r.mape) }}%</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="grid g-2 mt">
+  <div class="card">
+    <div class="card-head"><div><h2>R² by model</h2><p>Higher is better (1.0 = perfect)</p></div>
+      <div class="legend"><span><i style="background:var(--series-1)"></i>Test R²</span><span><i style="background:var(--series-2)"></i>CV R²</span></div></div>
+    <div class="chart-box"><canvas id="cmp"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div><h2>Average error by model</h2><p>MAPE: mean absolute % error, lower is better</p></div></div>
+    <div class="chart-box"><canvas id="mape"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Actual vs predicted salary</h2><p>Test employees. Dots on the dashed line are perfect predictions.</p></div></div>
+    <div class="chart-box tall"><canvas id="avp"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div><h2>Prediction error distribution</h2><p>% difference between predicted and actual salary</p></div></div>
+    <div class="chart-box tall"><canvas id="resid"></canvas></div>
+  </div>
+
+  <div class="card span-2">
+    <div class="card-head"><div><h2>Feature importance</h2><p>Permutation importance: how much R² drops when a feature is randomly shuffled. Bigger drop = more important.</p></div>
+      <div class="legend"><span><i style="background:var(--series-1)"></i>Profile feature</span><span><i style="background:var(--series-3)"></i>Skill</span></div></div>
+    <div class="chart-box tall"><canvas id="imp"></canvas></div>
+  </div>
+</div>
+
+<div class="card mt">
+  <div class="card-head"><div><h2>Training history</h2><p>From the <code>model_runs</code> table</p></div></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Run</th><th>When</th><th>Model</th><th class="r">R²</th><th class="r">CV R²</th><th class="r">MAE</th><th class="r">Train rows</th></tr></thead>
+      <tbody>
+      {% for r in runs %}
+        <tr><td>#{{ r.run_id }}</td><td>{{ r.created_at }}</td><td>{{ r.model_name }}</td><td class="r">{{ "%.4f"|format(r.r2_score) }}</td>
+            <td class="r">{{ "%.4f"|format(r.cv_r2) }}</td><td class="r">{{ r.mae|inr }}</td><td class="r">{{ r.train_rows }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const M = {{ data|tojson }};
+const names = M.results.map(r => r.model_name);
+
+registerChart((t) => {
+  const lo = Math.max(0, Math.min(...M.results.map(r => Math.min(r.r2, r.cv_r2))) - 0.05);
+  return new Chart(document.getElementById("cmp"), {
+    type: "bar",
+    data: { labels: names, datasets: [
+      { label: "Test R²", data: M.results.map(r => r.r2), backgroundColor: t.s1, borderColor: t.surface, borderWidth: { left: 2, right: 2 } },
+      { label: "CV R²", data: M.results.map(r => r.cv_r2), backgroundColor: t.s2, borderColor: t.surface, borderWidth: { left: 2, right: 2 } },
+    ]},
+    options: {
+      interaction: { mode: "index", intersect: false },
+      scales: { x: noGridAxis(), y: { min: Math.floor(lo * 20) / 20, max: 1 } },
+      plugins: { tooltip: { displayColors: true, callbacks: { label: (i) => ` ${i.dataset.label}: ${i.raw.toFixed(4)}` } } },
+    },
+  });
+});
+
+registerChart((t) => new Chart(document.getElementById("mape"), {
+  type: "bar",
+  data: { labels: names, datasets: [{ data: M.results.map(r => r.mape),
+    backgroundColor: names.map(n => n === M.selected ? t.s1 : t.neutral), barPercentage: .6 }] },
+  options: {
+    scales: { x: noGridAxis(), y: { beginAtZero: true, ticks: { callback: (v) => v + "%" } } },
+    plugins: { tooltip: { callbacks: { label: (i) => [`MAPE ${i.raw.toFixed(2)}%`, `MAE ${inr(M.results[i.dataIndex].mae)}`] } } },
+  },
+}));
+
+registerChart((t) => {
+  const max = Math.ceil(Math.max(...M.scatter.map(p => Math.max(p.x, p.y))) / 5e5) * 5e5;
+  return new Chart(document.getElementById("avp"), {
+    type: "scatter",
+    data: { datasets: [
+      { label: "Perfect prediction", type: "line", data: [{ x: 0, y: 0 }, { x: max, y: max }], borderColor: t.muted, borderDash: [6, 5], borderWidth: 1.5, pointRadius: 0 },
+      { label: "Employee", data: M.scatter, backgroundColor: alpha(t.s1, .6), borderColor: t.surface, borderWidth: 1, pointRadius: 4, pointHoverRadius: 7 },
+    ]},
+    options: {
+      scales: { x: lpaAxis({ max, title: { display: true, text: "Actual salary" } }), y: lpaAxis({ max, title: { display: true, text: "Predicted salary" } }) },
+      plugins: { tooltip: { filter: (i) => i.datasetIndex === 1, callbacks: { label: (i) => [i.raw.role, `Actual ${lpa(i.raw.x)}`, `Predicted ${lpa(i.raw.y)}`, `Error ${((i.raw.y / i.raw.x - 1) * 100).toFixed(1)}%`] } } },
+    },
+  });
+});
+
+registerChart((t) => new Chart(document.getElementById("resid"), {
+  type: "bar",
+  data: { labels: M.resid.labels, datasets: [{ data: M.resid.counts,
+    backgroundColor: M.resid.edges.slice(0, -1).map((lo, i) => (Math.abs(lo) <= 10 && Math.abs(M.resid.edges[i + 1]) <= 10) ? t.s1 : t.neutral),
+    borderColor: t.surface, borderWidth: { left: 1, right: 1 }, categoryPercentage: 1, barPercentage: 1 }] },
+  options: {
+    scales: { x: noGridAxis({ title: { display: true, text: "Prediction error (blue = within ±10%)" }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } }), y: { title: { display: true, text: "Employees" } } },
+    plugins: { tooltip: { callbacks: { title: (i) => `${M.resid.edges[i[0].dataIndex].toFixed(1)}% to ${M.resid.edges[i[0].dataIndex + 1].toFixed(1)}%`, label: (i) => i.raw + " employees" } } },
+  },
+}));
+
+registerChart((t) => new Chart(document.getElementById("imp"), {
+  type: "bar",
+  data: { labels: M.importance.map(f => f.label), datasets: [{ data: M.importance.map(f => Math.max(f.importance, 0)),
+    backgroundColor: M.importance.map(f => f.feature.startsWith("skill_") ? t.s3 : t.s1), barPercentage: .7 }] },
+  options: {
+    indexAxis: "y",
+    scales: { x: { beginAtZero: true, title: { display: true, text: "Drop in R² when shuffled" } }, y: noGridAxis({ ticks: { autoSkip: false } }) },
+    plugins: { tooltip: { callbacks: { label: (i) => `R² drop ${M.importance[i.dataIndex].importance.toFixed(4)} ± ${M.importance[i.dataIndex].std.toFixed(4)}` } } },
+  },
+}));
+</script>
+{% endblock %}
