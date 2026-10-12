@@ -16,6 +16,8 @@ The project comes in **two versions** that share the same database and ML core:
 
 📄 **Project report & viva guide (PDF):** [`docs/Salary_Prediction_Report_and_Viva_Guide.pdf`](docs/Salary_Prediction_Report_and_Viva_Guide.pdf) covers the full explanation, diagrams and screenshots, plus 114 viva questions with answers.
 
+📊 **Presentation (PowerPoint):** [`docs/Salary_Prediction_Presentation.pptx`](docs/Salary_Prediction_Presentation.pptx) is a 23-slide deck on the web application, with speaker notes.
+
 ---
 
 ## ⚡ Windows: one-step install
